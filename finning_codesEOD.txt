@@ -1,0 +1,73 @@
+select [Sales.Date],
+[Serial.Number],
+[Sale.Price],
+LEFT([Serial.Number], 3) as [Serial.Prefix]
+into #tempSales
+from SalesData
+
+
+--a) For sales in 2019, output the Sales Model with the highest number of units sold
+
+Select TOP 1
+SPM.[Sales.Model],
+COUNT(*) as [Quantity Sold]
+from #tempSales TS
+inner join SerialPrefixMapping SPM
+on TS.[Serial.Prefix] = SPM.[Serial.Prefix]
+where YEAR(TS.[Sales.Date]) = 2019
+group by SPM.[Sales.Model]
+ORDER BY [Quantity Sold] DESC
+
+-- b) For sales in 2017 through 2019, output the top 5 Product Families with 
+the highest average Sale Price, excluding Product Families that have fewer than 10 units sold overall */
+
+Select TOP 5
+SPM.[Product.Family],
+AVG(TS.[Sale.Price]) as [Highest Average]
+from #tempSales TS
+inner join SerialPrefixMapping SPM
+on TS.[Serial.Prefix] = SPM.[Serial.Prefix]
+where YEAR(TS.[Sales.Date]) >= 2017
+AND YEAR(TS.[Sales.Date]) <= 2019
+group by SPM.[Product.Family]
+HAVING COUNT(*) >= 10
+ORDER BY [Highest Average] DESC
+
+-- c) For each Product Family, produce the average of units sold per day over the last 30 days from today */
+
+Select SPM.[Product.Family],
+TS.[Sales.Date],
+AVG(TS.[Sale.Price]) as [Daily Average]
+from #tempSales TS
+inner join SerialPrefixMapping SPM
+on TS.[Serial.Prefix] = SPM.[Serial.Prefix]
+where TS.[Sales.Date] >= cast(dateadd(dd, -30, getdate()) as date)
+and TS.[Sales.Date] < cast(GETDATE() as date)
+group by SPM.[Product.Family],
+ TS.[Sales.Date]
+
+
+-- d) For each product family, generate the ratio of last 12 months sales divided by previous 12 months sales */
+
+Select S.[Product.Family],
+S.[Last 12 months],
+T.[Previous 12 months],
+[Last 12 months] / [Previous 12 months] AS Ratio
+from
+(Select SPM.[Product.Family],
+SUM(TS.[Sale.Price]) AS [Last 12 months]
+from #tempSales TS
+inner join SerialPrefixMapping SPM
+on TS.[Serial.Prefix] = SPM.[Serial.Prefix]
+where TS.[Sales.Date] >= cast(dateadd(mm, -12, getdate()) as date)
+and TS.[Sales.Date] < cast(GETDATE() as date)
+group by SPM.[Product.Family]) S
+LEFT join
+(Select SPM.[Product.Family],
+SUM(TS.[Sale.Price]) AS [Previous 12 months]
+from #tempSales TS
+inner join SerialPrefixMapping SPM
+on TS.[Serial.Prefix] = SPM.[Serial.Prefix]
+where TS.[Sales.Date] >= cast(dateadd(mm, -24, getdate()) as date) and TS.[Sales.Date] < cast(dateadd(mm, -12, getdate()) as date)
+group by SPM.[Product.Family]) T
+ON S.[Product.Family] = T.[Product.Family]
